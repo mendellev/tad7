@@ -50,7 +50,7 @@ async function main() {
   ];
 
   const findIndexForItem = (item: Item): number => {
-    return items.findIndex((it) => it.alias == item.alias);
+    return item.alias.charCodeAt(0) - 65; // 65 = 'A'
   };
 
   const indexToAlias = (idx: number): string => {
@@ -161,10 +161,16 @@ async function main() {
     consumers: consumersForCombo(combo),
   }));
 
-  const itemsSetsSheet = XLSX.utils.aoa_to_sheet([
-    ["Набір", "Кількість"],
-    ...comboConsumers.map((cc) => [itemComboToNameString(cc), cc.consumers]),
-  ]);
+  const combosToSheet = (
+    combos: ItemsComboConsumersCount[]
+  ): XLSX.WorkSheet => {
+    return XLSX.utils.aoa_to_sheet([
+      ["Набір", "Кількість"],
+      ...combos.map((cc) => [itemComboToNameString(cc), cc.consumers]),
+    ]);
+  };
+
+  const itemsSetsSheet = combosToSheet(comboConsumers);
   XLSX.utils.book_append_sheet(workbook, itemsSetsSheet, "Предметні набори");
 
   // ------------------------  Предметні набори END
@@ -174,13 +180,66 @@ async function main() {
     (combo) => combo.consumers >= MINIMUM_CONSUMERS
   );
 
-  const f2Sheet = XLSX.utils.aoa_to_sheet([
-    ["Набір", "Кількість"],
-    ...f2Combos.map((cc) => [itemComboToNameString(cc), cc.consumers]),
-  ]);
+  const f2Sheet = combosToSheet(f2Combos);
   XLSX.utils.book_append_sheet(workbook, f2Sheet, "F2");
   // ------------------------  F2 END
 
+  // ------------------------  F3 START
+  const canMergeComboItems = (
+    item1: ItemsCombo,
+    item2: ItemsCombo
+  ): boolean => {
+    return item1.items.some((it1) =>
+      item2.items.some((it2) => it1.alias == it2.alias)
+    );
+  };
+
+  const mergeComboItems = (
+    item1: ItemsCombo,
+    item2: ItemsCombo
+  ): ItemsCombo => {
+    return {
+      items: Array.from(
+        new Set(
+          item1.items
+            .map((i) => findIndexForItem(i))
+            .concat(item2.items.map((i) => findIndexForItem(i)))
+        )
+      ).map((index) => items[index]),
+    };
+  };
+
+  const tripleCombos: ItemsCombo[] = [];
+
+  const comboL = f2Combos.length;
+  const tripleSets: Set<string> = new Set();
+  for (let i = 0; i < comboL; ++i) {
+    for (let j = i + 1; j < comboL; ++j) {
+      if (canMergeComboItems(f2Combos[i], f2Combos[j])) {
+        const mergedCombo = mergeComboItems(f2Combos[i], f2Combos[j]);
+        if (!tripleSets.has(itemComboToString(mergedCombo))) {
+          tripleCombos.push(mergedCombo);
+          tripleSets.add(itemComboToString(mergedCombo));
+        }
+      }
+    }
+  }
+
+  const tripleCombosConsumers: ItemsComboConsumersCount[] = tripleCombos.map(
+    (combo) => ({ ...combo, consumers: consumersForCombo(combo) })
+  );
+
+  const tripleSheet = combosToSheet(tripleCombosConsumers);
+  XLSX.utils.book_append_sheet(workbook, tripleSheet, "F3 combos");
+
+  const f3Combos: ItemsComboConsumersCount[] = tripleCombosConsumers.filter(
+    (c) => c.consumers >= MINIMUM_CONSUMERS
+  );
+
+  const f3Sheet = combosToSheet(f3Combos);
+  XLSX.utils.book_append_sheet(workbook, f3Sheet, "F3 results");
+
+  // ------------------------  F3 END
   XLSX.writeFileXLSX(workbook, FILENAME, {
     bookType: "xlsx",
     type: "binary",
