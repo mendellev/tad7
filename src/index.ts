@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
-import * as fs from "fs";
+
+const GITHUB_URL = "https://github.com/mendellev/tad7";
 
 type Item = {
   alias: string;
@@ -116,6 +117,7 @@ async function main() {
   );
 
   const sumSheet = XLSX.utils.aoa_to_sheet([
+    [`GitHub Url`, GITHUB_URL],
     ["номер транзакції", ...items.map((item) => item.name)],
     ...data.map((d, idx) => [idx + 1, ...d]),
     ["Sum", ...itemsWithMinimumConsumers.map((i) => i.consumers)],
@@ -329,6 +331,32 @@ async function main() {
   );
 
   // ------------------------  ASSOCIATION item END
+
+  // ------------------------  ASSOCIATION FULL START
+  const allRules = tripleRules
+    .concat(doubleRules)
+    .filter((rule) => rule.C >= MINIMUM_C);
+
+  const finalSheet = XLSX.utils.aoa_to_sheet([
+    ["Якщо умова, то наслідок", "Підтримка", "Достовірність", "C*S"],
+    ...allRules
+      .sort((a, b) => b.C - a.C)
+      .slice(0, 5)
+      .map((rule) => [
+        `Якщо ${itemComboToNameString(rule.A)}, то {${rule.B.name}}`,
+        toPercent(rule.S),
+        toPercent(rule.C),
+        rule.S * rule.C,
+      ]),
+  ]);
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    finalSheet,
+    `Top 5 правила >= ${toPercent(MINIMUM_C)}`
+  );
+
+  // ------------------------  ASSOCIATION FULL END
 
   XLSX.writeFileXLSX(workbook, FILENAME, {
     bookType: "xlsx",
