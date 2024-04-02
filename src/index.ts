@@ -17,6 +17,16 @@ type ItemsCombo = {
 };
 type ItemsComboConsumersCount = ItemsCombo & ConsumersCount;
 
+type AssociationRule = {
+  S: number;
+  C: number;
+};
+
+type ItemsAssociationRule = {
+  A: ItemsCombo;
+  B: Item;
+} & AssociationRule;
+
 const MINIMUM_CONSUMERS = 5;
 const MINIMUM_C = 0.7;
 
@@ -142,8 +152,6 @@ async function main() {
     }
   }
 
-  console.log(JSON.stringify(combos));
-
   const consumersForCombo = (combo: ItemsCombo): number => {
     return data.reduce(
       (acc, n) =>
@@ -171,7 +179,7 @@ async function main() {
   };
 
   const itemsSetsSheet = combosToSheet(comboConsumers);
-  XLSX.utils.book_append_sheet(workbook, itemsSetsSheet, "Предметні набори");
+  XLSX.utils.book_append_sheet(workbook, itemsSetsSheet, "Предметні набори F2");
 
   // ------------------------  Предметні набори END
   // ------------------------  F2 START
@@ -230,16 +238,98 @@ async function main() {
   );
 
   const tripleSheet = combosToSheet(tripleCombosConsumers);
-  XLSX.utils.book_append_sheet(workbook, tripleSheet, "F3 combos");
+  XLSX.utils.book_append_sheet(workbook, tripleSheet, "Предметні набори F3");
 
   const f3Combos: ItemsComboConsumersCount[] = tripleCombosConsumers.filter(
     (c) => c.consumers >= MINIMUM_CONSUMERS
   );
 
   const f3Sheet = combosToSheet(f3Combos);
-  XLSX.utils.book_append_sheet(workbook, f3Sheet, "F3 results");
+  XLSX.utils.book_append_sheet(workbook, f3Sheet, "F3");
 
   // ------------------------  F3 END
+
+  // ------------------------  ASSOCIATION two items START
+
+  const toPercent = (percent: number): string => {
+    return Math.round(percent * 100).toFixed(2);
+  };
+
+  const comboIntoRules = (
+    itemCombo: ItemsComboConsumersCount
+  ): ItemsAssociationRule[] => {
+    const L = itemCombo.items.length;
+    const indexSets: number[] = [];
+
+    const calcS = (itemCombo: ItemsComboConsumersCount): number => {
+      return itemCombo.consumers / data.length;
+    };
+
+    const calcC = (
+      itemCombo: ItemsComboConsumersCount,
+      itemComboA: ItemsCombo
+    ) => {
+      return itemCombo.consumers / consumersForCombo(itemComboA);
+    };
+
+    const rules: ItemsAssociationRule[] = [];
+
+    for (let i = 0; i < L; i++) {
+      const B: Item = itemCombo.items[i];
+      const A: ItemsCombo = {
+        items: itemCombo.items.filter((_, idx) => idx != i),
+      };
+
+      rules.push({
+        A,
+        B,
+        S: calcS(itemCombo),
+        C: calcC(itemCombo, A),
+      });
+    }
+
+    return rules;
+  };
+
+  const tripleRules: ItemsAssociationRule[] = f3Combos.flatMap((f3Combo) =>
+    comboIntoRules(f3Combo)
+  );
+
+  const rulesToSheet = (rules: ItemsAssociationRule[]): XLSX.WorkSheet => {
+    return XLSX.utils.aoa_to_sheet([
+      ["Якщо умова, то наслідок", "Підтримка", "Достовірність"],
+      ...rules.map((rule) => [
+        `Якщо ${itemComboToNameString(rule.A)}, то {${rule.B.name}}`,
+        toPercent(rule.S),
+        toPercent(rule.C),
+      ]),
+    ]);
+  };
+
+  const tripleRulesSheet = rulesToSheet(tripleRules);
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    tripleRulesSheet,
+    "Асоціативні правила 2 items"
+  );
+
+  // ------------------------  ASSOCIATION two items END
+  // ------------------------  ASSOCIATION item START
+  const doubleRules: ItemsAssociationRule[] = f2Combos.flatMap((f2Combo) =>
+    comboIntoRules(f2Combo)
+  );
+
+  const doubleRulesSheet = rulesToSheet(doubleRules);
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    doubleRulesSheet,
+    "Асоціативні правила 1 items"
+  );
+
+  // ------------------------  ASSOCIATION item END
+
   XLSX.writeFileXLSX(workbook, FILENAME, {
     bookType: "xlsx",
     type: "binary",
@@ -247,49 +337,3 @@ async function main() {
 }
 
 main();
-
-/*
-
-const workbook: XLSX.WorkBook = XLSX.utils.book_new();
-
-    const detailsSheet = queryParamsToDetailsSheet(searchRequest, {
-      tabName: searchRequest.tabName,
-    });
-    XLSX.utils.book_append_sheet(workbook, detailsSheet, 'Details');
-
-    let topKeywords: WordCount[] = [];
-    // Object.keys(data).forEach((key) => {
-    data.items.forEach((item) => {
-      const wordcloud: WordCount[] = item.words;
-      wordcloud.sort((a, b) => b.count - a.count);
-      topKeywords.push(...wordcloud);
-      const cells = [['Word', 'Count']].concat(
-        wordcloud.map((cell) => [cell.name, `${cell.count}`]),
-      );
-
-      const sheet = XLSX.utils.aoa_to_sheet(cells);
-      XLSX.utils.book_append_sheet(workbook, sheet, item.name);
-    });
-
-    topKeywords.sort((a, b) => b.count - a.count);
-    topKeywords = topKeywords.slice(0, 50);
-    const topKeywordsCells = [['Word', 'Count']].concat(
-      topKeywords.map((cell) => [cell.name, `${cell.count}`]),
-    );
-    const topKeywordsSheet = XLSX.utils.aoa_to_sheet(topKeywordsCells);
-    XLSX.utils.book_append_sheet(workbook, topKeywordsSheet, 'all');
-
-    XLSX.writeFileXLSX(workbook, fileName, {
-      bookType: 'xlsx',
-      type: 'binary',
-    });
-
-    const xlsxStream = fs.createReadStream(fileName);
-
-    xlsxStream.pipe(response);
-
-    xlsxStream.on('end', () => {
-      console.log(`EXLS stream end`);
-      fs.rmSync(fileName);
-    });
-*/
